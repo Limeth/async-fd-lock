@@ -1,4 +1,4 @@
-use std::{ops, sync::Arc};
+use std::ops;
 
 use crate::{sys, RwLock};
 
@@ -10,11 +10,11 @@ use crate::{sys, RwLock};
 #[must_use = "if unused the RwLock will immediately unlock"]
 #[derive(Debug)]
 pub struct OwnedRwLockReadGuard<T: sys::AsOpenFile> {
-    lock: Arc<RwLock<T>>,
+    lock: RwLock<T>,
 }
 
 impl<T: sys::AsOpenFile> OwnedRwLockReadGuard<T> {
-    pub(crate) fn new(lock: Arc<RwLock<T>>) -> Self {
+    pub(crate) fn new(lock: RwLock<T>) -> Self {
         Self { lock }
     }
 }

@@ -4,7 +4,6 @@ use crate::read_guard::RwLockReadGuard;
 use crate::sys;
 use crate::write_guard::RwLockWriteGuard;
 use std::io;
-use std::sync::Arc;
 
 /// Advisory reader-writer lock for files.
 ///
@@ -60,7 +59,7 @@ impl<T: sys::AsOpenFile> RwLock<T> {
         Ok(RwLockReadGuard::new(guard))
     }
 
-    pub fn read_owned(self: Arc<Self>) -> io::Result<OwnedRwLockReadGuard<T>> {
+    pub fn read_owned(self) -> io::Result<OwnedRwLockReadGuard<T>> {
         self.lock.acquire_lock::<false, true>()?;
         let guard = OwnedRwLockReadGuard::new(self);
         Ok(guard)
@@ -124,7 +123,7 @@ impl<T: sys::AsOpenFile> RwLock<T> {
         Ok(RwLockWriteGuard::new(guard))
     }
 
-    pub fn write_owned(self: Arc<Self>) -> io::Result<OwnedRwLockWriteGuard<T>> {
+    pub fn write_owned(self) -> io::Result<OwnedRwLockWriteGuard<T>> {
         self.lock.acquire_lock::<true, true>()?;
         let guard = OwnedRwLockWriteGuard::new(self);
         Ok(guard)
