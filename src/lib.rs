@@ -40,6 +40,8 @@ mod write_guard;
 
 pub(crate) mod sys;
 
+pub use owned_read_guard::OwnedRwLockReadGuard;
+pub use owned_write_guard::OwnedRwLockWriteGuard;
 pub use read_guard::RwLockReadGuard;
 pub use rw_lock::RwLock;
 pub use write_guard::RwLockWriteGuard;
