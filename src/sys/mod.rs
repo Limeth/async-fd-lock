@@ -10,8 +10,5 @@ cfg_if! {
         pub use windows::*;
         #[doc(no_inline)]
         pub(crate) use std::os::windows::io::AsHandle as AsOpenFile;
-    } else {
-        mod unsupported;
-        pub use unsupported;
     }
 }
