@@ -1,6 +1,6 @@
 use std::ops;
 
-use crate::sys;
+use crate::sys::{self, RwLockTrait};
 
 /// RAII structure used to release the shared read access of a lock when
 /// dropped.
@@ -14,12 +14,12 @@ use crate::sys;
 #[must_use = "if unused the RwLock will immediately unlock"]
 #[derive(Debug)]
 pub struct RwLockReadGuard<'lock, T: sys::AsOpenFile> {
-    guard: sys::RwLockReadGuard<'lock, T>,
+    lock: &'lock sys::RwLock<T>,
 }
 
 impl<'lock, T: sys::AsOpenFile> RwLockReadGuard<'lock, T> {
-    pub(crate) fn new(guard: sys::RwLockReadGuard<'lock, T>) -> Self {
-        Self { guard }
+    pub(crate) fn new(lock: &'lock sys::RwLock<T>) -> Self {
+        Self { lock }
     }
 }
 
@@ -28,12 +28,14 @@ impl<T: sys::AsOpenFile> ops::Deref for RwLockReadGuard<'_, T> {
 
     #[inline]
     fn deref(&self) -> &Self::Target {
-        self.guard.deref()
+        &self.lock.inner
     }
 }
 
 /// Release the lock.
 impl<T: sys::AsOpenFile> Drop for RwLockReadGuard<'_, T> {
     #[inline]
-    fn drop(&mut self) {}
+    fn drop(&mut self) {
+        let _ = self.lock.release_lock();
+    }
 }

@@ -1,6 +1,9 @@
 use std::ops;
 
-use crate::{sys, RwLock};
+use crate::{
+    sys::{self, RwLockTrait},
+    RwLock,
+};
 
 /// Onwed version of `RwLockWriteGuard`
 ///

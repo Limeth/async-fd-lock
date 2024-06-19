@@ -1,7 +1,7 @@
 use crate::owned_read_guard::OwnedRwLockReadGuard;
 use crate::owned_write_guard::OwnedRwLockWriteGuard;
 use crate::read_guard::RwLockReadGuard;
-use crate::sys;
+use crate::sys::{self, RwLockTrait};
 use crate::write_guard::RwLockWriteGuard;
 use std::io;
 
@@ -55,14 +55,8 @@ impl<T: sys::AsOpenFile> RwLock<T> {
     /// interrupted by a signal handler.
     #[inline]
     pub fn read(&self) -> io::Result<RwLockReadGuard<'_, T>> {
-        let guard = self.lock.read()?;
-        Ok(RwLockReadGuard::new(guard))
-    }
-
-    pub fn read_owned(self) -> io::Result<OwnedRwLockReadGuard<T>> {
         self.lock.acquire_lock::<false, true>()?;
-        let guard = OwnedRwLockReadGuard::new(self);
-        Ok(guard)
+        Ok(RwLockReadGuard::new(&self.lock))
     }
 
     /// Attempts to acquire this lock with shared read access.
@@ -83,8 +77,18 @@ impl<T: sys::AsOpenFile> RwLock<T> {
     /// interrupted by a signal handler.
     #[inline]
     pub fn try_read(&self) -> io::Result<RwLockReadGuard<'_, T>> {
-        let guard = self.lock.try_read()?;
-        Ok(RwLockReadGuard::new(guard))
+        self.lock.acquire_lock::<false, false>()?;
+        Ok(RwLockReadGuard::new(&self.lock))
+    }
+
+    pub fn read_owned(self) -> io::Result<OwnedRwLockReadGuard<T>> {
+        self.lock.acquire_lock::<false, true>()?;
+        Ok(OwnedRwLockReadGuard::new(self))
+    }
+
+    pub fn try_read_owned(self) -> io::Result<OwnedRwLockReadGuard<T>> {
+        self.lock.acquire_lock::<false, false>()?;
+        Ok(OwnedRwLockReadGuard::new(self))
     }
 
     /// Locks this lock with exclusive write access, blocking the current thread
@@ -102,8 +106,8 @@ impl<T: sys::AsOpenFile> RwLock<T> {
     /// interrupted by a signal handler.
     #[inline]
     pub fn write(&mut self) -> io::Result<RwLockWriteGuard<'_, T>> {
-        let guard = self.lock.write()?;
-        Ok(RwLockWriteGuard::new(guard))
+        self.lock.acquire_lock::<true, true>()?;
+        Ok(RwLockWriteGuard::new(&mut self.lock))
     }
 
     /// Attempts to lock this lock with exclusive write access.
@@ -119,14 +123,18 @@ impl<T: sys::AsOpenFile> RwLock<T> {
     /// interrupted by a signal handler.
     #[inline]
     pub fn try_write(&mut self) -> io::Result<RwLockWriteGuard<'_, T>> {
-        let guard = self.lock.try_write()?;
-        Ok(RwLockWriteGuard::new(guard))
+        self.lock.acquire_lock::<true, false>()?;
+        Ok(RwLockWriteGuard::new(&mut self.lock))
     }
 
     pub fn write_owned(self) -> io::Result<OwnedRwLockWriteGuard<T>> {
         self.lock.acquire_lock::<true, true>()?;
-        let guard = OwnedRwLockWriteGuard::new(self);
-        Ok(guard)
+        Ok(OwnedRwLockWriteGuard::new(self))
+    }
+
+    pub fn try_write_owned(self) -> io::Result<OwnedRwLockWriteGuard<T>> {
+        self.lock.acquire_lock::<true, false>()?;
+        Ok(OwnedRwLockWriteGuard::new(self))
     }
 
     /// Consumes this `RwLock`, returning the underlying data.
