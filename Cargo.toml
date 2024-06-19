@@ -26,4 +26,6 @@ features = [
 rustix = { version = "0.38.0", features = ["fs"] }
 
 [dev-dependencies]
+paste = "1.0.15"
+polonius-the-crab = "0.4.1"
 tempfile = "3.0.8"

@@ -81,13 +81,17 @@ impl<T: sys::AsOpenFile> RwLock<T> {
         Ok(RwLockReadGuard::new(&self.lock))
     }
 
-    pub fn read_owned(self) -> io::Result<OwnedRwLockReadGuard<T>> {
-        self.lock.acquire_lock::<false, true>()?;
+    pub fn read_owned(self) -> Result<OwnedRwLockReadGuard<T>, (Self, io::Error)> {
+        if let Err(err) = self.lock.acquire_lock::<false, true>() {
+            return Err((self, err));
+        }
         Ok(OwnedRwLockReadGuard::new(self))
     }
 
-    pub fn try_read_owned(self) -> io::Result<OwnedRwLockReadGuard<T>> {
-        self.lock.acquire_lock::<false, false>()?;
+    pub fn try_read_owned(self) -> Result<OwnedRwLockReadGuard<T>, (Self, io::Error)> {
+        if let Err(err) = self.lock.acquire_lock::<false, false>() {
+            return Err((self, err));
+        }
         Ok(OwnedRwLockReadGuard::new(self))
     }
 
@@ -127,13 +131,17 @@ impl<T: sys::AsOpenFile> RwLock<T> {
         Ok(RwLockWriteGuard::new(&mut self.lock))
     }
 
-    pub fn write_owned(self) -> io::Result<OwnedRwLockWriteGuard<T>> {
-        self.lock.acquire_lock::<true, true>()?;
+    pub fn write_owned(self) -> Result<OwnedRwLockWriteGuard<T>, (Self, io::Error)> {
+        if let Err(err) = self.lock.acquire_lock::<true, true>() {
+            return Err((self, err));
+        }
         Ok(OwnedRwLockWriteGuard::new(self))
     }
 
-    pub fn try_write_owned(self) -> io::Result<OwnedRwLockWriteGuard<T>> {
-        self.lock.acquire_lock::<true, false>()?;
+    pub fn try_write_owned(self) -> Result<OwnedRwLockWriteGuard<T>, (Self, io::Error)> {
+        if let Err(err) = self.lock.acquire_lock::<true, false>() {
+            return Err((self, err));
+        }
         Ok(OwnedRwLockWriteGuard::new(self))
     }
 
