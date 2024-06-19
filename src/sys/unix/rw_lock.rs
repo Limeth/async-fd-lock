@@ -1,4 +1,4 @@
-use rustix::fd::AsFd;
+use rustix::fd::{AsFd, AsRawFd};
 use rustix::fs::FlockOperation;
 use std::io::{self, Error, ErrorKind};
 
@@ -17,34 +17,33 @@ impl<T: AsFd> RwLock<T> {
 
     #[inline]
     pub fn write(&mut self) -> io::Result<RwLockWriteGuard<'_, T>> {
-        compatible_unix_lock(self.inner.as_fd(), FlockOperation::LockExclusive)?;
+        self.acquire_lock::<true, true>()?;
         Ok(RwLockWriteGuard::new(self))
     }
 
     #[inline]
     pub fn try_write(&mut self) -> Result<RwLockWriteGuard<'_, T>, Error> {
-        compatible_unix_lock(self.inner.as_fd(), FlockOperation::NonBlockingLockExclusive)
+        self.acquire_lock::<true, false>()
             .map_err(|err| match err.kind() {
                 ErrorKind::AlreadyExists => ErrorKind::WouldBlock.into(),
-                _ => Error::from(err),
+                _ => err,
             })?;
         Ok(RwLockWriteGuard::new(self))
     }
 
     #[inline]
     pub fn read(&self) -> io::Result<RwLockReadGuard<'_, T>> {
-        compatible_unix_lock(self.inner.as_fd(), FlockOperation::LockShared)?;
+        self.acquire_lock::<false, true>()?;
         Ok(RwLockReadGuard::new(self))
     }
 
     #[inline]
     pub fn try_read(&self) -> Result<RwLockReadGuard<'_, T>, Error> {
-        compatible_unix_lock(self.inner.as_fd(), FlockOperation::NonBlockingLockShared).map_err(
-            |err| match err.kind() {
+        self.acquire_lock::<false, false>()
+            .map_err(|err| match err.kind() {
                 ErrorKind::AlreadyExists => ErrorKind::WouldBlock.into(),
-                _ => Error::from(err),
-            },
-        )?;
+                _ => err,
+            })?;
         Ok(RwLockReadGuard::new(self))
     }
 
@@ -54,5 +53,23 @@ impl<T: AsFd> RwLock<T> {
         T: Sized,
     {
         self.inner
+    }
+
+    pub(crate) fn acquire_lock<const WRITE: bool, const BLOCK: bool>(&self) -> io::Result<()> {
+        let fd = self.inner.as_fd();
+        let operation = match (WRITE, BLOCK) {
+            (false, false) => FlockOperation::NonBlockingLockShared,
+            (false, true) => FlockOperation::LockShared,
+            (true, false) => FlockOperation::NonBlockingLockExclusive,
+            (true, true) => FlockOperation::LockExclusive,
+        };
+        compatible_unix_lock(fd, operation)?;
+        Ok(())
+    }
+
+    pub(crate) fn release_lock(&self) -> io::Result<()> {
+        let fd = self.inner.as_fd();
+        compatible_unix_lock(fd, FlockOperation::Unlock)?;
+        Ok(())
     }
 }
