@@ -1,4 +1,8 @@
-use fd_lock::{AsOpenFile, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use async_trait::async_trait;
+use fd_lock::{
+    blocking, AsOpenFile, OwnedRwLockReadGuard, OwnedRwLockWriteGuard, RwLockReadGuard,
+    RwLockTrait, RwLockWriteGuard,
+};
 use paste::paste;
 use polonius_the_crab::prelude::*;
 use std::fs::File;
@@ -10,21 +14,53 @@ use tempfile::tempdir;
 /// [`RwLock::try_read_owned`] and [`RwLock::try_write_owned`], respectively.
 ///
 /// This enables a shared implementation of tests.
-trait RwLockExt<T: AsOpenFile>: Sized {
-    fn try_read_ref(&self) -> Result<RwLockReadGuard<'_, T>, (&Self, io::Error)>;
-    fn try_write_ref(&mut self) -> Result<RwLockWriteGuard<'_, T>, (&mut Self, io::Error)>;
+#[async_trait]
+trait RwLockExt<T: AsOpenFile>: Sized + RwLockTrait {
+    async fn try_read_own(self) -> Result<OwnedRwLockReadGuard<Self>, (Self, io::Error)>
+    where
+        T: Send;
+    async fn try_write_own(self) -> Result<OwnedRwLockWriteGuard<Self>, (Self, io::Error)>
+    where
+        T: Send;
+    async fn try_read_ref(&self) -> Result<RwLockReadGuard<'_, T>, (&Self, io::Error)>
+    where
+        T: Sync;
+    async fn try_write_ref(&mut self) -> Result<RwLockWriteGuard<'_, T>, (&mut Self, io::Error)>
+    where
+        T: Send + Sync;
 }
 
-impl<T: AsOpenFile> RwLockExt<T> for RwLock<T> {
-    fn try_read_ref(&self) -> Result<RwLockReadGuard<'_, T>, (&Self, io::Error)> {
+#[async_trait]
+impl<T: AsOpenFile> RwLockExt<T> for blocking::RwLock<T> {
+    async fn try_read_own(self) -> Result<OwnedRwLockReadGuard<Self>, (Self, io::Error)>
+    where
+        T: Send,
+    {
+        self.try_read_owned()
+    }
+
+    async fn try_write_own(self) -> Result<OwnedRwLockWriteGuard<Self>, (Self, io::Error)>
+    where
+        T: Send,
+    {
+        self.try_write_owned()
+    }
+
+    async fn try_read_ref(&self) -> Result<RwLockReadGuard<'_, T>, (&Self, io::Error)>
+    where
+        T: Sync,
+    {
         self.try_read().map_err(move |err| (self, err))
     }
 
-    fn try_write_ref(&mut self) -> Result<RwLockWriteGuard<'_, T>, (&mut Self, io::Error)> {
+    async fn try_write_ref(&mut self) -> Result<RwLockWriteGuard<'_, T>, (&mut Self, io::Error)>
+    where
+        T: Send + Sync,
+    {
         let mut this = self;
         let err = polonius!(|this| -> Result<
             RwLockWriteGuard<'polonius, T>,
-            (&'polonius mut RwLock<T>, io::Error),
+            (&'polonius mut blocking::RwLock<T>, io::Error),
         > {
             match this.try_write() {
                 Ok(ok) => polonius_return!(Ok(ok)),
@@ -35,83 +71,85 @@ impl<T: AsOpenFile> RwLockExt<T> for RwLock<T> {
     }
 }
 
+// TODO: Impl trait for async rwlock
+
 macro_rules! generate_tests {
     ($($suffix_first:ident)?, $($suffix_second:ident)?) => {
         paste! {
-            #[test]
-            fn [<read $($suffix_first)? _read $($suffix_second)? _lock>]() {
+            #[tokio::test]
+            async fn [<read $($suffix_first)? _read $($suffix_second)? _lock>]() {
                 let dir = tempdir().unwrap();
                 let path = dir.path().join("lockfile");
 
-                let l0 = RwLock::new(File::create(&path).unwrap());
-                let l1 = RwLock::new(File::open(path).unwrap());
+                let l0 = blocking::RwLock::new(File::create(&path).unwrap());
+                let l1 = blocking::RwLock::new(File::open(path).unwrap());
 
-                let _g0 = l0.[<try_read $($suffix_first)?>]().unwrap();
-                let _g1 = l1.[<try_read $($suffix_second)?>]().unwrap();
+                let _g0 = l0.[<try_read $($suffix_first)?>]().await.unwrap();
+                let _g1 = l1.[<try_read $($suffix_second)?>]().await.unwrap();
             }
 
-            #[test]
-            fn [<write $($suffix_first)? _write $($suffix_second)? _lock>]() {
+            #[tokio::test]
+            async fn [<write $($suffix_first)? _write $($suffix_second)? _lock>]() {
                 let dir = tempdir().unwrap();
                 let path = dir.path().join("lockfile");
 
                 #[allow(unused_mut)]
-                let mut l0 = RwLock::new(File::create(&path).unwrap());
+                let mut l0 = blocking::RwLock::new(File::create(&path).unwrap());
                 #[allow(unused_mut)]
-                let mut l1 = RwLock::new(File::open(path).unwrap());
+                let mut l1 = blocking::RwLock::new(File::open(path).unwrap());
 
-                let g0 = l0.[<try_write $($suffix_first)?>]().unwrap();
-                let (l1, err) = l1.[<try_write $($suffix_second)?>]().unwrap_err();
+                let g0 = l0.[<try_write $($suffix_first)?>]().await.unwrap();
+                let (l1, err) = l1.[<try_write $($suffix_second)?>]().await.unwrap_err();
 
                 assert!(matches!(err.kind(), ErrorKind::WouldBlock));
                 drop(g0);
 
-                let _g1 = l1.[<try_write $($suffix_second)?>]().unwrap();
+                let _g1 = l1.[<try_write $($suffix_second)?>]().await.unwrap();
             }
 
-            #[test]
-            fn [<read $($suffix_first)? _write $($suffix_second)? _lock>]() {
+            #[tokio::test]
+            async fn [<read $($suffix_first)? _write $($suffix_second)? _lock>]() {
                 let dir = tempdir().unwrap();
                 let path = dir.path().join("lockfile");
 
-                let l0 = RwLock::new(File::create(&path).unwrap());
+                let l0 = blocking::RwLock::new(File::create(&path).unwrap());
                 #[allow(unused_mut)]
-                let mut l1 = RwLock::new(File::open(path).unwrap());
+                let mut l1 = blocking::RwLock::new(File::open(path).unwrap());
 
-                let g0 = l0.[<try_read $($suffix_first)?>]().unwrap();
-                let (l1, err) = l1.[<try_write $($suffix_second)?>]().unwrap_err();
+                let g0 = l0.[<try_read $($suffix_first)?>]().await.unwrap();
+                let (l1, err) = l1.[<try_write $($suffix_second)?>]().await.unwrap_err();
 
                 assert!(matches!(err.kind(), ErrorKind::WouldBlock));
                 drop(g0);
 
-                let _g1 = l1.[<try_write $($suffix_second)?>]().unwrap();
+                let _g1 = l1.[<try_write $($suffix_second)?>]().await.unwrap();
             }
 
-            #[test]
-            fn [<write $($suffix_first)? _read $($suffix_second)? _lock>]() {
+            #[tokio::test]
+            async fn [<write $($suffix_first)? _read $($suffix_second)? _lock>]() {
                 let dir = tempdir().unwrap();
                 let path = dir.path().join("lockfile");
 
                 #[allow(unused_mut)]
-                let mut l0 = RwLock::new(File::create(&path).unwrap());
-                let l1 = RwLock::new(File::open(path).unwrap());
+                let mut l0 = blocking::RwLock::new(File::create(&path).unwrap());
+                let l1 = blocking::RwLock::new(File::open(path).unwrap());
 
-                let g0 = l0.[<try_write $($suffix_first)?>]().unwrap();
-                let (l1, err) = l1.[<try_read $($suffix_second)?>]().unwrap_err();
+                let g0 = l0.[<try_write $($suffix_first)?>]().await.unwrap();
+                let (l1, err) = l1.[<try_read $($suffix_second)?>]().await.unwrap_err();
 
                 assert!(matches!(err.kind(), ErrorKind::WouldBlock));
                 drop(g0);
 
-                let _g1 = l1.[<try_read $($suffix_second)?>]().unwrap();
+                let _g1 = l1.[<try_read $($suffix_second)?>]().await.unwrap();
             }
         }
     };
 }
 
 generate_tests!(_ref, _ref);
-generate_tests!(_ref, _owned);
-generate_tests!(_owned, _ref);
-generate_tests!(_owned, _owned);
+generate_tests!(_ref, _own);
+generate_tests!(_own, _ref);
+generate_tests!(_own, _own);
 
 #[cfg(windows)]
 mod windows {
@@ -124,7 +162,7 @@ mod windows {
         let path = dir.path().join("lockfile");
 
         // On Windows, opening with an access_mode as 0 will prevent all locking operations from succeeding, simulating an I/O error.
-        let mut l0 = RwLock::new(
+        let mut l0 = blocking::RwLock::new(
             File::options()
                 .create(true)
                 .read(true)

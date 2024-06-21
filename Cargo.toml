@@ -11,8 +11,13 @@ authors = ["Yoshua Wuyts <yoshuawuyts@gmail.com>"]
 readme = "README.md"
 edition = "2021"
 
+[features]
+default = ["async"]
+async = ["dep:tokio"]
+
 [dependencies]
 cfg-if = "1.0.0"
+tokio = { version = "1.38.0", features = ["rt"], optional = true }
 
 [target.'cfg(windows)'.dependencies.windows-sys]
 version = "0.52.0"
@@ -29,3 +34,5 @@ rustix = { version = "0.38.0", features = ["fs"] }
 paste = "1.0.15"
 polonius-the-crab = "0.4.1"
 tempfile = "3.0.8"
+async-trait = "0.1.80"
+tokio = { version = "1.38.0", features = ["rt", "macros"] }

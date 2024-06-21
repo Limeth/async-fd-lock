@@ -1,9 +1,10 @@
 use crate::owned_read_guard::OwnedRwLockReadGuard;
 use crate::owned_write_guard::OwnedRwLockWriteGuard;
 use crate::read_guard::RwLockReadGuard;
-use crate::sys::{self, RwLockTrait};
+use crate::sys::{self, RwLockTrait, RwLockTraitExt};
 use crate::write_guard::RwLockWriteGuard;
 use std::io;
+use std::ops::Deref;
 
 /// Advisory reader-writer lock for files.
 ///
@@ -81,14 +82,14 @@ impl<T: sys::AsOpenFile> RwLock<T> {
         Ok(RwLockReadGuard::new(&self.lock))
     }
 
-    pub fn read_owned(self) -> Result<OwnedRwLockReadGuard<T>, (Self, io::Error)> {
+    pub fn read_owned(self) -> Result<OwnedRwLockReadGuard<Self>, (Self, io::Error)> {
         if let Err(err) = self.lock.acquire_lock::<false, true>() {
             return Err((self, err));
         }
         Ok(OwnedRwLockReadGuard::new(self))
     }
 
-    pub fn try_read_owned(self) -> Result<OwnedRwLockReadGuard<T>, (Self, io::Error)> {
+    pub fn try_read_owned(self) -> Result<OwnedRwLockReadGuard<Self>, (Self, io::Error)> {
         if let Err(err) = self.lock.acquire_lock::<false, false>() {
             return Err((self, err));
         }
@@ -131,14 +132,14 @@ impl<T: sys::AsOpenFile> RwLock<T> {
         Ok(RwLockWriteGuard::new(&mut self.lock))
     }
 
-    pub fn write_owned(self) -> Result<OwnedRwLockWriteGuard<T>, (Self, io::Error)> {
+    pub fn write_owned(self) -> Result<OwnedRwLockWriteGuard<Self>, (Self, io::Error)> {
         if let Err(err) = self.lock.acquire_lock::<true, true>() {
             return Err((self, err));
         }
         Ok(OwnedRwLockWriteGuard::new(self))
     }
 
-    pub fn try_write_owned(self) -> Result<OwnedRwLockWriteGuard<T>, (Self, io::Error)> {
+    pub fn try_write_owned(self) -> Result<OwnedRwLockWriteGuard<Self>, (Self, io::Error)> {
         if let Err(err) = self.lock.acquire_lock::<true, false>() {
             return Err((self, err));
         }
@@ -152,5 +153,28 @@ impl<T: sys::AsOpenFile> RwLock<T> {
         T: Sized,
     {
         self.lock.into_inner()
+    }
+}
+
+impl<T: sys::AsOpenFile> Deref for RwLock<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.lock
+    }
+}
+
+impl<T: sys::AsOpenFile> crate::rw_lock::RwLockTrait for RwLock<T> {
+    type AsOpenFile = T;
+
+    fn into_inner(self) -> Self::AsOpenFile
+    where
+        Self::AsOpenFile: Sized,
+    {
+        self.lock.into_inner()
+    }
+
+    fn release_lock(&self) -> io::Result<()> {
+        self.lock.release_lock()
     }
 }

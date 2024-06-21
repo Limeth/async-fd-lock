@@ -1,5 +1,6 @@
 use std::io::{self, Error, ErrorKind};
-use std::os::windows::io::{AsHandle, AsRawHandle};
+use std::ops::Deref;
+use std::os::windows::io::{AsHandle, AsRawHandle, BorrowedHandle, OwnedHandle};
 
 use windows_sys::Win32::Foundation::ERROR_LOCK_VIOLATION;
 use windows_sys::Win32::Foundation::HANDLE;
@@ -7,7 +8,7 @@ use windows_sys::Win32::Storage::FileSystem::{
     LockFileEx, UnlockFile, LOCKFILE_EXCLUSIVE_LOCK, LOCKFILE_FAIL_IMMEDIATELY,
 };
 
-use crate::sys::RwLockTrait;
+use crate::sys::{AsOpenFile, RwLockTrait};
 
 use super::utils::{syscall, Overlapped};
 
@@ -16,7 +17,19 @@ pub struct RwLock<T: AsHandle> {
     pub inner: T,
 }
 
-impl<T: AsHandle> RwLockTrait<T> for RwLock<T> {
+impl<T: AsHandle> Deref for RwLock<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl<T: AsHandle> RwLockTrait for RwLock<T> {
+    type AsOpenFile = T;
+    type BorrowedOpenFile<'a> = BorrowedHandle<'a> where Self: 'a;
+    type OwnedOpenFile = OwnedHandle;
+
     #[inline]
     fn new(inner: T) -> Self {
         RwLock { inner }
@@ -30,9 +43,12 @@ impl<T: AsHandle> RwLockTrait<T> for RwLock<T> {
         self.inner
     }
 
-    fn acquire_lock<const WRITE: bool, const BLOCK: bool>(&self) -> io::Result<()> {
+    fn acquire_lock_from_file<const WRITE: bool, const BLOCK: bool>(
+        // fd: Self::BorrowedOpenFile<'_>,
+        handle: impl AsOpenFile,
+    ) -> io::Result<()> {
         // See: https://stackoverflow.com/a/9186532, https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-lockfileex
-        let handle = self.inner.as_handle().as_raw_handle() as HANDLE;
+        let handle = handle.as_handle().as_raw_handle() as HANDLE;
         let overlapped = Overlapped::zero();
         let flags = if WRITE { LOCKFILE_EXCLUSIVE_LOCK } else { 0 }
             | if BLOCK { 0 } else { LOCKFILE_FAIL_IMMEDIATELY };
@@ -48,6 +64,10 @@ impl<T: AsHandle> RwLockTrait<T> for RwLock<T> {
             })?;
         }
         Ok(())
+    }
+
+    fn borrow_open_file(&self) -> Self::BorrowedOpenFile<'_> {
+        self.inner.as_handle()
     }
 
     fn release_lock(&self) -> io::Result<()> {

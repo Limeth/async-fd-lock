@@ -14,11 +14,11 @@
 //! # use std::io;
 //! use std::io::prelude::*;
 //! use std::fs::File;
-//! use fd_lock::RwLock;
+//! use fd_lock::blocking;
 //!
 //! # fn main() -> io::Result<()> {
 //! // Lock a file and write to it.
-//! let mut f = RwLock::new(File::open("foo.txt")?);
+//! let mut f = blocking::RwLock::new(File::open("foo.txt")?);
 //! write!(f.write()?, "chashu cat")?;
 //!
 //! // A lock can also be held across multiple operations.
@@ -43,6 +43,6 @@ pub(crate) mod sys;
 pub use owned_read_guard::OwnedRwLockReadGuard;
 pub use owned_write_guard::OwnedRwLockWriteGuard;
 pub use read_guard::RwLockReadGuard;
-pub use rw_lock::RwLock;
+pub use rw_lock::*;
 pub use sys::AsOpenFile;
 pub use write_guard::RwLockWriteGuard;

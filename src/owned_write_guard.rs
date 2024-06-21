@@ -1,9 +1,6 @@
 use std::ops;
 
-use crate::{
-    sys::{self, RwLockTrait},
-    RwLock,
-};
+use crate::rw_lock::RwLockTrait;
 
 /// Onwed version of `RwLockWriteGuard`
 ///
@@ -12,29 +9,29 @@ use crate::{
 /// Dropping this type may panic if the lock fails to unlock.
 #[must_use = "if unused the RwLock will immediately unlock"]
 #[derive(Debug)]
-pub struct OwnedRwLockWriteGuard<T: sys::AsOpenFile> {
-    lock: RwLock<T>,
+pub struct OwnedRwLockWriteGuard<L: RwLockTrait> {
+    lock: L,
 }
 
-impl<T: sys::AsOpenFile> OwnedRwLockWriteGuard<T> {
-    pub(crate) fn new(lock: RwLock<T>) -> Self {
+impl<L: RwLockTrait> OwnedRwLockWriteGuard<L> {
+    pub(crate) fn new(lock: L) -> Self {
         Self { lock }
     }
 }
 
-impl<T: sys::AsOpenFile> ops::Deref for OwnedRwLockWriteGuard<T> {
-    type Target = T;
+impl<L: RwLockTrait> ops::Deref for OwnedRwLockWriteGuard<L> {
+    type Target = L::AsOpenFile;
 
     #[inline]
     fn deref(&self) -> &Self::Target {
-        &self.lock.lock.inner
+        &self.lock
     }
 }
 
 /// Release the lock.
-impl<T: sys::AsOpenFile> Drop for OwnedRwLockWriteGuard<T> {
+impl<L: RwLockTrait> Drop for OwnedRwLockWriteGuard<L> {
     #[inline]
     fn drop(&mut self) {
-        let _ = self.lock.lock.release_lock();
+        let _ = self.lock.release_lock();
     }
 }
