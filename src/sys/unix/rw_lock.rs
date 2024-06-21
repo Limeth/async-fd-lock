@@ -39,8 +39,7 @@ impl<T: AsFd> RwLockTrait for RwLock<T> {
     }
 
     fn acquire_lock_from_file<const WRITE: bool, const BLOCK: bool>(
-        // fd: Self::BorrowedOpenFile<'_>,
-        handle: impl AsOpenFile,
+        handle: &impl AsOpenFile,
     ) -> io::Result<()> {
         let operation = match (WRITE, BLOCK) {
             (false, false) => FlockOperation::NonBlockingLockShared,
@@ -65,8 +64,8 @@ impl<T: AsFd> RwLockTrait for RwLock<T> {
         self.inner.as_fd()
     }
 
-    fn release_lock(&self) -> io::Result<()> {
-        let fd = self.inner.as_fd();
+    fn release_lock_from_file(handle: &impl AsOpenFile) -> io::Result<()> {
+        let fd = handle.as_fd();
         compatible_unix_lock(fd, FlockOperation::Unlock)?;
         Ok(())
     }

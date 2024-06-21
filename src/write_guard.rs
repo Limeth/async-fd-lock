@@ -1,6 +1,6 @@
 use std::ops;
 
-use crate::sys::{self, RwLockTrait};
+use crate::sys::{self, RwLockTraitExt};
 
 /// RAII structure used to release the exclusive write access of a lock when
 /// dropped.

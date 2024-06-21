@@ -44,8 +44,7 @@ impl<T: AsHandle> RwLockTrait for RwLock<T> {
     }
 
     fn acquire_lock_from_file<const WRITE: bool, const BLOCK: bool>(
-        // fd: Self::BorrowedOpenFile<'_>,
-        handle: impl AsOpenFile,
+        handle: &impl AsOpenFile,
     ) -> io::Result<()> {
         // See: https://stackoverflow.com/a/9186532, https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-lockfileex
         let handle = handle.as_handle().as_raw_handle() as HANDLE;
@@ -70,8 +69,8 @@ impl<T: AsHandle> RwLockTrait for RwLock<T> {
         self.inner.as_handle()
     }
 
-    fn release_lock(&self) -> io::Result<()> {
-        let handle = self.inner.as_handle().as_raw_handle() as HANDLE;
+    fn release_lock_from_file(handle: &impl AsOpenFile) -> io::Result<()> {
+        let handle = handle.as_handle().as_raw_handle() as HANDLE;
         syscall(unsafe { UnlockFile(handle, 0, 0, 1, 0) })?;
         Ok(())
     }

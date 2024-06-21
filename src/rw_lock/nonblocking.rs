@@ -1,7 +1,7 @@
 use crate::owned_read_guard::OwnedRwLockReadGuard;
 use crate::owned_write_guard::OwnedRwLockWriteGuard;
 use crate::read_guard::RwLockReadGuard;
-use crate::sys::{self, RwLockTrait, RwLockTraitExt};
+use crate::sys::{self, LockGuard, RwLockTrait, RwLockTraitExt};
 use crate::write_guard::RwLockWriteGuard;
 use std::io;
 use std::ops::Deref;
@@ -39,6 +39,25 @@ impl<T: sys::AsOpenFile> RwLock<T> {
         }
     }
 
+    async fn lock<const WRITE: bool, const BLOCK: bool>(
+        &self,
+    ) -> Result<LockGuard<sys::RwLock<T>>, io::Error>
+    where
+        T: Sync + 'static,
+    {
+        let file = self.lock.borrow_open_file().try_clone_to_owned()?;
+        let (sync_send, async_recv) = tokio::sync::oneshot::channel();
+        task::spawn_blocking(move || {
+            let guard = sys::RwLock::<T>::acquire_lock_from_file::<WRITE, BLOCK>(&file)
+                .map(|()| LockGuard::<sys::RwLock<T>>::new(file));
+            let result = sync_send.send(guard);
+            drop(result); // If the guard cannot be sent to the async task, release the lock immediately.
+        });
+        async_recv
+            .await
+            .expect("the blocking task is not cancelable")
+    }
+
     /// Locks this lock with shared read access, blocking the current thread
     /// until it can be acquired.
     ///
@@ -58,12 +77,13 @@ impl<T: sys::AsOpenFile> RwLock<T> {
     #[inline]
     pub async fn read(&self) -> io::Result<RwLockReadGuard<'_, T>>
     where
-        T: Sync,
+        T: Sync + 'static,
     {
-        let file = self.lock.borrow_open_file().try_clone_to_owned()?;
-        task::spawn_blocking(move || sys::RwLock::<T>::acquire_lock_from_file::<false, true>(file))
-            .await??;
-        Ok(RwLockReadGuard::new(&self.lock))
+        let guard = self
+            .lock::<false, true>()
+            .await?
+            .defuse_with(|_| RwLockReadGuard::new(&self.lock));
+        Ok(guard)
     }
 
     /// Attempts to acquire this lock with shared read access.
@@ -83,34 +103,39 @@ impl<T: sys::AsOpenFile> RwLock<T> {
     /// On Unix this may return an `ErrorKind::Interrupted` if the operation was
     /// interrupted by a signal handler.
     #[inline]
-    pub async fn try_read(&self) -> io::Result<RwLockReadGuard<'_, T>> {
-        self.lock.acquire_lock::<false, false>()?;
-        Ok(RwLockReadGuard::new(&self.lock))
+    pub async fn try_read(&self) -> io::Result<RwLockReadGuard<'_, T>>
+    where
+        T: Sync + 'static,
+    {
+        let guard = self
+            .lock::<false, false>()
+            .await?
+            .defuse_with(|_| RwLockReadGuard::new(&self.lock));
+        Ok(guard)
     }
 
     pub async fn read_owned(self) -> Result<OwnedRwLockReadGuard<Self>, (Self, io::Error)>
     where
-        T: Sync,
+        T: Sync + 'static,
     {
-        let file = match self.lock.borrow_open_file().try_clone_to_owned() {
-            Ok(file) => file,
+        let guard = match self.lock::<false, true>().await {
+            Ok(guard) => guard,
             Err(error) => return Err((self, error)),
         };
-        let result = task::spawn_blocking(move || {
-            sys::RwLock::<T>::acquire_lock_from_file::<false, true>(file)
-        })
-        .await;
-        if let Err(error) = result.map_err(Into::into).and_then(std::convert::identity) {
-            return Err((self, error));
-        }
-        Ok(OwnedRwLockReadGuard::new(self))
+        let guard = guard.defuse_with(|_| OwnedRwLockReadGuard::new(self));
+        Ok(guard)
     }
 
-    pub async fn try_read_owned(self) -> Result<OwnedRwLockReadGuard<Self>, (Self, io::Error)> {
-        if let Err(err) = self.lock.acquire_lock::<false, false>() {
-            return Err((self, err));
-        }
-        Ok(OwnedRwLockReadGuard::new(self))
+    pub async fn try_read_owned(self) -> Result<OwnedRwLockReadGuard<Self>, (Self, io::Error)>
+    where
+        T: Sync + 'static,
+    {
+        let guard = match self.lock::<false, false>().await {
+            Ok(guard) => guard,
+            Err(error) => return Err((self, error)),
+        };
+        let guard = guard.defuse_with(|_| OwnedRwLockReadGuard::new(self));
+        Ok(guard)
     }
 
     /// Locks this lock with exclusive write access, blocking the current thread
@@ -129,12 +154,13 @@ impl<T: sys::AsOpenFile> RwLock<T> {
     #[inline]
     pub async fn write(&mut self) -> io::Result<RwLockWriteGuard<'_, T>>
     where
-        T: Sync,
+        T: Sync + 'static,
     {
-        let file = self.lock.borrow_open_file().try_clone_to_owned()?;
-        task::spawn_blocking(move || sys::RwLock::<T>::acquire_lock_from_file::<true, true>(file))
-            .await??;
-        Ok(RwLockWriteGuard::new(&mut self.lock))
+        let guard = self
+            .lock::<true, true>()
+            .await?
+            .defuse_with(|_| RwLockWriteGuard::new(&mut self.lock));
+        Ok(guard)
     }
 
     /// Attempts to lock this lock with exclusive write access.
@@ -149,34 +175,39 @@ impl<T: sys::AsOpenFile> RwLock<T> {
     /// On Unix this may return an `ErrorKind::Interrupted` if the operation was
     /// interrupted by a signal handler.
     #[inline]
-    pub async fn try_write(&mut self) -> io::Result<RwLockWriteGuard<'_, T>> {
-        self.lock.acquire_lock::<true, false>()?;
-        Ok(RwLockWriteGuard::new(&mut self.lock))
+    pub async fn try_write(&mut self) -> io::Result<RwLockWriteGuard<'_, T>>
+    where
+        T: Sync + 'static,
+    {
+        let guard = self
+            .lock::<true, false>()
+            .await?
+            .defuse_with(|_| RwLockWriteGuard::new(&mut self.lock));
+        Ok(guard)
     }
 
     pub async fn write_owned(self) -> Result<OwnedRwLockWriteGuard<Self>, (Self, io::Error)>
     where
-        T: Sync,
+        T: Sync + 'static,
     {
-        let file = match self.lock.borrow_open_file().try_clone_to_owned() {
-            Ok(file) => file,
+        let guard = match self.lock::<true, true>().await {
+            Ok(guard) => guard,
             Err(error) => return Err((self, error)),
         };
-        let result = task::spawn_blocking(move || {
-            sys::RwLock::<T>::acquire_lock_from_file::<true, true>(file)
-        })
-        .await;
-        if let Err(error) = result.map_err(Into::into).and_then(std::convert::identity) {
-            return Err((self, error));
-        }
-        Ok(OwnedRwLockWriteGuard::new(self))
+        let guard = guard.defuse_with(|_| OwnedRwLockWriteGuard::new(self));
+        Ok(guard)
     }
 
-    pub async fn try_write_owned(self) -> Result<OwnedRwLockWriteGuard<Self>, (Self, io::Error)> {
-        if let Err(err) = self.lock.acquire_lock::<true, false>() {
-            return Err((self, err));
-        }
-        Ok(OwnedRwLockWriteGuard::new(self))
+    pub async fn try_write_owned(self) -> Result<OwnedRwLockWriteGuard<Self>, (Self, io::Error)>
+    where
+        T: Sync + 'static,
+    {
+        let guard = match self.lock::<true, false>().await {
+            Ok(guard) => guard,
+            Err(error) => return Err((self, error)),
+        };
+        let guard = guard.defuse_with(|_| OwnedRwLockWriteGuard::new(self));
+        Ok(guard)
     }
 
     /// Consumes this `RwLock`, returning the underlying data.
