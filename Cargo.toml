@@ -35,4 +35,4 @@ paste = "1.0.15"
 polonius-the-crab = "0.4.1"
 tempfile = "3.0.8"
 async-trait = "0.1.80"
-tokio = { version = "1.38.0", features = ["macros"] }
+tokio = { version = "1.38.0", features = ["macros", "time"] }
