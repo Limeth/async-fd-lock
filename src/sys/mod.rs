@@ -15,14 +15,26 @@ cfg_if! {
     }
 }
 
-pub(crate) trait AsOpenFileExt {
+pub(crate) trait AsOpenFileExt: AsOpenFile {
     type BorrowedOpenFile<'a>: AsOpenFile
     where
         Self: 'a;
     type OwnedOpenFile: AsOpenFile;
 
-    fn borrow_open_file(&self) -> Self::BorrowedOpenFile<'_>;
-    fn acquire_lock_blocking<const WRITE: bool, const BLOCK: bool>(&self) -> io::Result<()>;
+    cfg_if! {
+        if #[cfg(feature = "async")] {
+            fn borrow_open_file(&self) -> Self::BorrowedOpenFile<'_>;
+        } else {
+            #[allow(unused)]
+            fn borrow_open_file(&self) -> Self::BorrowedOpenFile<'_>;
+        }
+    }
+
+    fn acquire_lock_blocking<const WRITE: bool, const BLOCK: bool>(
+        &self,
+    ) -> io::Result<LockGuard<Self::OwnedOpenFile>>
+    where
+        Self: Sized;
     fn release_lock_blocking(&self) -> io::Result<()>;
 }
 

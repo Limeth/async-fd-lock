@@ -1,6 +1,6 @@
 use std::ops::{Deref, DerefMut};
 
-use crate::sys::{AsOpenFile, AsOpenFileExt};
+use crate::sys::{AsOpenFile, AsOpenFileExt, LockGuard};
 
 /// Onwed version of `RwLockReadGuard`
 ///
@@ -14,7 +14,8 @@ pub struct RwLockReadGuard<T: AsOpenFile> {
 }
 
 impl<T: AsOpenFile> RwLockReadGuard<T> {
-    pub(crate) fn new(file: T) -> Self {
+    pub(crate) fn new<F: AsOpenFile>(file: T, guard: LockGuard<F>) -> Self {
+        guard.defuse();
         Self { file }
     }
 }

@@ -11,6 +11,8 @@ use windows_sys::Win32::Storage::FileSystem::{
 
 use crate::sys::{AsOpenFile, AsOpenFileExt};
 
+use super::LockGuard;
+
 impl<T> AsOpenFileExt for T
 where
     T: AsOpenFile,
@@ -24,8 +26,11 @@ where
         self.as_handle()
     }
 
-    fn acquire_lock_blocking<const WRITE: bool, const BLOCK: bool>(&self) -> io::Result<()> {
+    fn acquire_lock_blocking<const WRITE: bool, const BLOCK: bool>(
+        &self,
+    ) -> io::Result<LockGuard<Self::OwnedOpenFile>> {
         // See: https://stackoverflow.com/a/9186532, https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-lockfileex
+        let handle_clone = self.as_handle().try_clone_to_owned()?;
         let handle = self.as_handle().as_raw_handle() as HANDLE;
         let overlapped = Overlapped::zero();
         let flags = if WRITE { LOCKFILE_EXCLUSIVE_LOCK } else { 0 }
@@ -41,7 +46,7 @@ where
                 }
             })?;
         }
-        Ok(())
+        Ok(LockGuard::new(handle_clone))
     }
 
     fn release_lock_blocking(&self) -> io::Result<()> {

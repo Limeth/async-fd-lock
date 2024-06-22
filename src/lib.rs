@@ -47,6 +47,7 @@ mod write_guard;
 
 pub(crate) mod sys;
 
+#[cfg(feature = "async")]
 pub use nonblocking::*;
 pub use read_guard::RwLockReadGuard;
 pub use sys::AsOpenFile;
@@ -83,17 +84,17 @@ pub mod blocking {
         T: AsOpenFile + std::io::Read,
     {
         fn lock_read(self) -> LockReadResult<Self> {
-            if let Err(err) = self.acquire_lock_blocking::<false, true>() {
-                return Err((self, err));
+            match self.acquire_lock_blocking::<false, true>() {
+                Ok(guard) => Ok(RwLockReadGuard::new(self, guard)),
+                Err(error) => Err((self, error)),
             }
-            Ok(RwLockReadGuard::new(self))
         }
 
         fn try_lock_read(self) -> LockReadResult<Self> {
-            if let Err(err) = self.acquire_lock_blocking::<false, false>() {
-                return Err((self, err));
+            match self.acquire_lock_blocking::<false, false>() {
+                Ok(guard) => Ok(RwLockReadGuard::new(self, guard)),
+                Err(error) => Err((self, error)),
             }
-            Ok(RwLockReadGuard::new(self))
         }
     }
 
@@ -102,21 +103,22 @@ pub mod blocking {
         T: AsOpenFile + std::io::Write,
     {
         fn lock_write(self) -> LockWriteResult<Self> {
-            if let Err(err) = self.acquire_lock_blocking::<true, true>() {
-                return Err((self, err));
+            match self.acquire_lock_blocking::<true, true>() {
+                Ok(guard) => Ok(RwLockWriteGuard::new(self, guard)),
+                Err(error) => Err((self, error)),
             }
-            Ok(RwLockWriteGuard::new(self))
         }
 
         fn try_lock_write(self) -> LockWriteResult<Self> {
-            if let Err(err) = self.acquire_lock_blocking::<true, false>() {
-                return Err((self, err));
+            match self.acquire_lock_blocking::<true, false>() {
+                Ok(guard) => Ok(RwLockWriteGuard::new(self, guard)),
+                Err(error) => Err((self, error)),
             }
-            Ok(RwLockWriteGuard::new(self))
         }
     }
 }
 
+#[cfg(feature = "async")]
 pub mod nonblocking {
     use super::*;
     use async_trait::async_trait;
@@ -124,16 +126,14 @@ pub mod nonblocking {
 
     async fn lock<const WRITE: bool, const BLOCK: bool, T>(
         file: &T,
-    ) -> Result<LockGuard<T>, io::Error>
+    ) -> Result<LockGuard<<T as AsOpenFileExt>::OwnedOpenFile>, io::Error>
     where
         T: AsOpenFile + Sync + 'static,
     {
         let handle = file.borrow_open_file().try_clone_to_owned()?;
         let (sync_send, async_recv) = tokio::sync::oneshot::channel();
         tokio::task::spawn_blocking(move || {
-            let guard = handle
-                .acquire_lock_blocking::<WRITE, BLOCK>()
-                .map(|()| LockGuard::<T>::new(handle));
+            let guard = handle.acquire_lock_blocking::<WRITE, BLOCK>();
             let result = sync_send.send(guard);
             drop(result); // If the guard cannot be sent to the async task, release the lock immediately.
         });
@@ -170,21 +170,17 @@ pub mod nonblocking {
         T: AsOpenFile + tokio::io::AsyncRead + Send + Sync + 'static,
     {
         async fn lock_read(self) -> LockReadResult<Self> {
-            let guard = match lock::<false, true, _>(&self).await {
-                Ok(guard) => guard,
-                Err(error) => return Err((self, error)),
-            };
-            let guard = guard.defuse_with(|_| RwLockReadGuard::new(self));
-            Ok(guard)
+            match lock::<false, true, _>(&self).await {
+                Ok(guard) => Ok(RwLockReadGuard::new(self, guard)),
+                Err(error) => Err((self, error)),
+            }
         }
 
         async fn try_lock_read(self) -> LockReadResult<Self> {
-            let guard = match lock::<false, false, _>(&self).await {
-                Ok(guard) => guard,
-                Err(error) => return Err((self, error)),
-            };
-            let guard = guard.defuse_with(|_| RwLockReadGuard::new(self));
-            Ok(guard)
+            match lock::<false, false, _>(&self).await {
+                Ok(guard) => Ok(RwLockReadGuard::new(self, guard)),
+                Err(error) => Err((self, error)),
+            }
         }
     }
 
@@ -194,21 +190,17 @@ pub mod nonblocking {
         T: AsOpenFile + tokio::io::AsyncWrite + Send + Sync + 'static,
     {
         async fn lock_write(self) -> LockWriteResult<Self> {
-            let guard = match lock::<true, true, _>(&self).await {
-                Ok(guard) => guard,
-                Err(error) => return Err((self, error)),
-            };
-            let guard = guard.defuse_with(|_| RwLockWriteGuard::new(self));
-            Ok(guard)
+            match lock::<true, true, _>(&self).await {
+                Ok(guard) => Ok(RwLockWriteGuard::new(self, guard)),
+                Err(error) => Err((self, error)),
+            }
         }
 
         async fn try_lock_write(self) -> LockWriteResult<Self> {
-            let guard = match lock::<true, false, _>(&self).await {
-                Ok(guard) => guard,
+            match lock::<true, false, _>(&self).await {
+                Ok(guard) => Ok(RwLockWriteGuard::new(self, guard)),
                 Err(error) => return Err((self, error)),
-            };
-            let guard = guard.defuse_with(|_| RwLockWriteGuard::new(self));
-            Ok(guard)
+            }
         }
     }
 }
