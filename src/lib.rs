@@ -49,7 +49,6 @@ pub(crate) mod sys;
 
 pub use nonblocking::*;
 pub use read_guard::RwLockReadGuard;
-// pub use rw_lock::*;
 pub use sys::AsOpenFile;
 pub use write_guard::RwLockWriteGuard;
 

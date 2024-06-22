@@ -5,11 +5,11 @@ use cfg_if::cfg_if;
 cfg_if! {
     if #[cfg(unix)] {
         mod unix;
-        
+
         pub use rustix::fd::AsFd as AsOpenFile;
     } else if #[cfg(windows)] {
         mod windows;
-        
+
         #[doc(no_inline)]
         pub use std::os::windows::io::AsHandle as AsOpenFile;
     }
@@ -21,9 +21,7 @@ pub(crate) trait AsOpenFileExt {
         Self: 'a;
     type OwnedOpenFile: AsOpenFile;
 
-    // TODO: Is it necessary? Rename? impl Borrow?
     fn borrow_open_file(&self) -> Self::BorrowedOpenFile<'_>;
-    // TODO: Use types instead of bools?
     fn acquire_lock_blocking<const WRITE: bool, const BLOCK: bool>(&self) -> io::Result<()>;
     fn release_lock_blocking(&self) -> io::Result<()>;
 }
