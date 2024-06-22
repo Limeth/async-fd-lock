@@ -131,7 +131,7 @@ async fn io_read() {
 #[cfg(windows)]
 mod windows {
     use super::*;
-    use fd_lock::blocking::{LockRead, LockWrite};
+    use async_fd_lock::blocking::{LockRead, LockWrite};
     use std::os::windows::fs::OpenOptionsExt;
 
     #[test]

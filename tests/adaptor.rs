@@ -1,5 +1,5 @@
+use async_fd_lock::{AsOpenFile, LockRead, LockWrite, RwLockReadGuard, RwLockWriteGuard};
 use async_trait::async_trait;
-use fd_lock::{AsOpenFile, LockRead, LockWrite, RwLockReadGuard, RwLockWriteGuard};
 use std::io;
 use std::io::ErrorKind;
 use std::path::Path;
@@ -9,7 +9,7 @@ use tokio::time;
 use tokio::time::error::Elapsed;
 
 pub mod blocking {
-    pub use fd_lock::blocking::*;
+    pub use async_fd_lock::blocking::*;
     pub use std::fs::File;
     use std::path::Path;
 
