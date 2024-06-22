@@ -122,11 +122,11 @@ pub mod blocking {
 pub mod nonblocking {
     use super::*;
     use async_trait::async_trait;
-    use sys::{AsOpenFileExt, LockGuard};
+    use sys::{AsOpenFileExt, RwLockGuard};
 
     async fn lock<const WRITE: bool, const BLOCK: bool, T>(
         file: &T,
-    ) -> Result<LockGuard<<T as AsOpenFileExt>::OwnedOpenFile>, io::Error>
+    ) -> Result<RwLockGuard<<T as AsOpenFileExt>::OwnedOpenFile>, io::Error>
     where
         T: AsOpenFile + Sync + 'static,
     {

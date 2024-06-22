@@ -11,7 +11,7 @@ use windows_sys::Win32::Storage::FileSystem::{
 
 use crate::sys::{AsOpenFile, AsOpenFileExt};
 
-use super::LockGuard;
+use super::RwLockGuard;
 
 impl<T> AsOpenFileExt for T
 where
@@ -28,7 +28,7 @@ where
 
     fn acquire_lock_blocking<const WRITE: bool, const BLOCK: bool>(
         &self,
-    ) -> io::Result<LockGuard<Self::OwnedOpenFile>> {
+    ) -> io::Result<RwLockGuard<Self::OwnedOpenFile>> {
         // See: https://stackoverflow.com/a/9186532, https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-lockfileex
         let handle_clone = self.as_handle().try_clone_to_owned()?;
         let handle = self.as_handle().as_raw_handle() as HANDLE;
@@ -46,7 +46,7 @@ where
                 }
             })?;
         }
-        Ok(LockGuard::new(handle_clone))
+        Ok(RwLockGuard::new(handle_clone))
     }
 
     fn release_lock_blocking(&self) -> io::Result<()> {

@@ -32,18 +32,18 @@ pub(crate) trait AsOpenFileExt: AsOpenFile {
 
     fn acquire_lock_blocking<const WRITE: bool, const BLOCK: bool>(
         &self,
-    ) -> io::Result<LockGuard<Self::OwnedOpenFile>>
+    ) -> io::Result<RwLockGuard<Self::OwnedOpenFile>>
     where
         Self: Sized;
     fn release_lock_blocking(&self) -> io::Result<()>;
 }
 
 #[must_use = "if unused the RwLock will immediately unlock"]
-pub struct LockGuard<T: AsOpenFile> {
+pub struct RwLockGuard<T: AsOpenFile> {
     handle: Option<<T as AsOpenFileExt>::OwnedOpenFile>,
 }
 
-impl<T: AsOpenFile> LockGuard<T> {
+impl<T: AsOpenFile> RwLockGuard<T> {
     pub fn new(handle: <T as AsOpenFileExt>::OwnedOpenFile) -> Self {
         Self {
             handle: Some(handle),
@@ -59,7 +59,7 @@ impl<T: AsOpenFile> LockGuard<T> {
     }
 }
 
-impl<T: AsOpenFile> Drop for LockGuard<T> {
+impl<T: AsOpenFile> Drop for RwLockGuard<T> {
     fn drop(&mut self) {
         if let Some(handle) = self.handle.take() {
             let _ = handle.release_lock_blocking();

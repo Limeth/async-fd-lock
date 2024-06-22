@@ -7,7 +7,7 @@ use utils::*;
 
 use crate::sys::{AsOpenFile, AsOpenFileExt};
 
-use super::LockGuard;
+use super::RwLockGuard;
 
 impl<T> AsOpenFileExt for T
 where
@@ -24,7 +24,7 @@ where
 
     fn acquire_lock_blocking<const WRITE: bool, const BLOCK: bool>(
         &self,
-    ) -> io::Result<LockGuard<Self::OwnedOpenFile>> {
+    ) -> io::Result<RwLockGuard<Self::OwnedOpenFile>> {
         let handle_clone = self.as_fd().try_clone_to_owned()?;
         let operation = match (WRITE, BLOCK) {
             (false, false) => FlockOperation::NonBlockingLockShared,
@@ -42,7 +42,7 @@ where
                 _ => Error::from(err),
             })?;
         }
-        Ok(LockGuard::new(handle_clone))
+        Ok(RwLockGuard::new(handle_clone))
     }
 
     fn release_lock_blocking(&self) -> io::Result<()> {
