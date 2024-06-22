@@ -1,14 +1,16 @@
-# fd-lock
+# async-fd-lock
 [![crates.io version][1]][2] 
 [![downloads][5]][6] [![docs.rs docs][7]][8]
 
-Advisory cross-platform file locks using file descriptors. Adapted from
-[mafintosh/fd-lock].
+Advisory cross-platform file locks using file descriptors, with async support
+by off-loading blocking operations to newly spawned blocking tasks.
+Adapted from [yoshuawuyts/fd-lock], which was adapted from [mafintosh/fd-lock].
 
 Note that advisory lock compliance is opt-in, and can freely be ignored by other
 parties. This means this crate __should never be used for security purposes__,
 but solely to coordinate file access.
 
+[yoshuawuyts/fd-lock]: https://github.com/yoshuawuyts/fd-lock
 [mafintosh/fd-lock]: https://github.com/mafintosh/fd-lock
 
 - [Documentation][8]

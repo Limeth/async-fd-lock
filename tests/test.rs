@@ -1,119 +1,137 @@
-use adaptor::{TimeoutRwLock, TryRwLock};
-use fd_lock::{
-    blocking, RwLock,
-};
+use adaptor::*;
+use futures::future::join_all;
 use paste::paste;
-use std::fs::File;
 use std::io::ErrorKind;
 use tempfile::tempdir;
+use tokio::fs::File;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 mod adaptor;
 
 macro_rules! generate_tests {
-    ($($blocking_first:ident)?, $prefix_first:ident, $suffix_first:ident; $($blocking_second:ident)?, $prefix_second:ident, $suffix_second:ident) => {
+    ($($blocking_first:ident)?, $prefix_first:ident; $($blocking_second:ident)?, $prefix_second:ident) => {
         paste! {
             #[tokio::test]
-            async fn [<$($blocking_first _)? $prefix_first _read_ $suffix_first _ $($blocking_second _)? $prefix_second _read_ $suffix_second _lock>]() {
+            async fn [<$($blocking_first _)? $prefix_first _read_ $($blocking_second _)? $prefix_second _read_lock>]() {
                 let dir = tempdir().unwrap();
                 let path = dir.path().join("lockfile");
 
-                let l0 = $($blocking_first::)? RwLock::new(File::create(&path).unwrap());
-                let l1 = $($blocking_second::)? RwLock::new(File::open(path).unwrap());
+                let l0 = $($blocking_first::)? file_create(&path).await.unwrap();
+                let l1 = $($blocking_second::)? file_open(path).await.unwrap();
 
-                let _g0 = l0.[<$prefix_first _read_ $suffix_first>]().await.unwrap();
-                let _g1 = l1.[<$prefix_second _read_ $suffix_second>]().await.unwrap();
+                let _g0 = l0.[<$prefix_first _lock_read_async>]().await.unwrap();
+                let _g1 = l1.[<$prefix_second _lock_read_async>]().await.unwrap();
             }
 
             #[tokio::test]
-            async fn [<$($blocking_first _)? $prefix_first _write_ $suffix_first _ $($blocking_second _)? $prefix_second _write_ $suffix_second _lock>]() {
+            async fn [<$($blocking_first _)? $prefix_first _write_ $($blocking_second _)? $prefix_second _write_lock>]() {
                 let dir = tempdir().unwrap();
                 let path = dir.path().join("lockfile");
 
                 #[allow(unused_mut)]
-                let mut l0 = $($blocking_first::)? RwLock::new(File::create(&path).unwrap());
+                let mut l0 = $($blocking_first::)? file_create(&path).await.unwrap();
                 #[allow(unused_mut)]
-                let mut l1 = $($blocking_second::)? RwLock::new(File::open(path).unwrap());
+                let mut l1 = $($blocking_second::)? file_open(path).await.unwrap();
 
-                let g0 = l0.[<$prefix_first _write_ $suffix_first>]().await.unwrap();
-                let (l1, err) = l1.[<$prefix_second _write_ $suffix_second>]().await.unwrap_err();
+                let g0 = l0.[<$prefix_first _lock_write_async>]().await.unwrap();
+                let (l1, err) = l1.[<$prefix_second _lock_write_async>]().await.unwrap_err();
 
                 assert!(matches!(err.kind(), ErrorKind::WouldBlock));
                 drop(g0);
 
-                let _g1 = l1.[<$prefix_second _write_ $suffix_second>]().await.unwrap();
+                let _g1 = l1.[<$prefix_second _lock_write_async>]().await.unwrap();
             }
 
             #[tokio::test]
-            async fn [<$($blocking_first _)? $prefix_first _read_ $suffix_first _ $($blocking_second _)? $prefix_second _write_ $suffix_second _lock>]() {
+            async fn [<$($blocking_first _)? $prefix_first _read_ $($blocking_second _)? $prefix_second _write_lock>]() {
                 let dir = tempdir().unwrap();
                 let path = dir.path().join("lockfile");
 
-                let l0 = $($blocking_first::)? RwLock::new(File::create(&path).unwrap());
+                let l0 = $($blocking_first::)? file_create(&path).await.unwrap();
                 #[allow(unused_mut)]
-                let mut l1 = $($blocking_second::)? RwLock::new(File::open(path).unwrap());
+                let mut l1 = $($blocking_second::)? file_open(path).await.unwrap();
 
-                let g0 = l0.[<$prefix_first _read_ $suffix_first>]().await.unwrap();
-                let (l1, err) = l1.[<$prefix_second _write_ $suffix_second>]().await.unwrap_err();
+                let g0 = l0.[<$prefix_first _lock_read_async>]().await.unwrap();
+                let (l1, err) = l1.[<$prefix_second _lock_write_async>]().await.unwrap_err();
 
                 assert!(matches!(err.kind(), ErrorKind::WouldBlock));
                 drop(g0);
 
-                let _g1 = l1.[<$prefix_second _write_ $suffix_second>]().await.unwrap();
+                let _g1 = l1.[<$prefix_second _lock_write_async>]().await.unwrap();
             }
 
             #[tokio::test]
-            async fn [<$($blocking_first _)? $prefix_first _write_ $suffix_first _ $($blocking_second _)? $prefix_second _read_ $suffix_second _lock>]() {
+            async fn [<$($blocking_first _)? $prefix_first _write_ $($blocking_second _)? $prefix_second _read_lock>]() {
                 let dir = tempdir().unwrap();
                 let path = dir.path().join("lockfile");
 
                 #[allow(unused_mut)]
-                let mut l0 = $($blocking_first::)? RwLock::new(File::create(&path).unwrap());
-                let l1 = $($blocking_second::)? RwLock::new(File::open(path).unwrap());
+                let mut l0 = $($blocking_first::)? file_create(&path).await.unwrap();
+                let l1 = $($blocking_second::)? file_open(path).await.unwrap();
 
-                let g0 = l0.[<$prefix_first _write_ $suffix_first>]().await.unwrap();
-                let (l1, err) = l1.[<$prefix_second _read_ $suffix_second>]().await.unwrap_err();
+                let g0 = l0.[<$prefix_first _lock_write_async>]().await.unwrap();
+                let (l1, err) = l1.[<$prefix_second _lock_read_async>]().await.unwrap_err();
 
                 assert!(matches!(err.kind(), ErrorKind::WouldBlock));
                 drop(g0);
 
-                let _g1 = l1.[<$prefix_second _read_ $suffix_second>]().await.unwrap();
+                let _g1 = l1.[<$prefix_second _lock_read_async>]().await.unwrap();
             }
         }
     };
 }
 
-generate_tests!(blocking, try,     ref; blocking, try,     ref);
-generate_tests!(blocking, try,     ref;         , try,     ref);
-generate_tests!(        , try,     ref; blocking, try,     ref);
-generate_tests!(        , try,     ref;         , try,     ref);
-generate_tests!(blocking, try,     ref; blocking, try,     own);
-generate_tests!(blocking, try,     ref;         , try,     own);
-generate_tests!(        , try,     ref; blocking, try,     own);
-generate_tests!(        , try,     ref;         , try,     own);
-generate_tests!(blocking, try,     own; blocking, try,     ref);
-generate_tests!(blocking, try,     own;         , try,     ref);
-generate_tests!(        , try,     own; blocking, try,     ref);
-generate_tests!(        , try,     own;         , try,     ref);
-generate_tests!(blocking, try,     own; blocking, try,     own);
-generate_tests!(blocking, try,     own;         , try,     own);
-generate_tests!(        , try,     own; blocking, try,     own);
-generate_tests!(        , try,     own;         , try,     own);
+generate_tests!(blocking, try;     blocking, try);
+generate_tests!(blocking, try;             , try);
+generate_tests!(        , try;     blocking, try);
+generate_tests!(        , try;             , try);
 
-generate_tests!(blocking, try,     ref;         , timeout, ref);
-generate_tests!(        , try,     ref;         , timeout, ref);
-generate_tests!(blocking, try,     own;         , timeout, ref);
-generate_tests!(        , try,     own;         , timeout, ref);
+generate_tests!(blocking, try;             , timeout);
+generate_tests!(        , try;             , timeout);
 
-generate_tests!(        , timeout, ref; blocking, try,     ref);
-generate_tests!(        , timeout, ref;         , try,     ref);
-generate_tests!(        , timeout, ref; blocking, try,     own);
-generate_tests!(        , timeout, ref;         , try,     own);
+generate_tests!(        , timeout; blocking, try);
+generate_tests!(        , timeout;         , try);
 
-generate_tests!(        , timeout, ref;         , timeout, ref);
+generate_tests!(        , timeout;         , timeout);
+
+#[tokio::test]
+async fn io_read() {
+    const BYTES: &[u8] = b"Hello, world!";
+
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("lockfile");
+
+    {
+        let file = tokio::fs::File::create(&path).await.unwrap(); // Create the file.
+        let mut guard = file.try_lock_write_async().await.unwrap();
+
+        {
+            let file = tokio::fs::File::open(&path).await.unwrap(); // Create the file.
+            let _ = file.try_lock_write_async().await.unwrap_err();
+        }
+
+        guard.write_all(BYTES).await.unwrap();
+    }
+
+    {
+        let guards = join_all((0..5).map(|_| async {
+            let file = File::open(&path).await.unwrap(); // Open it in read-only mode.
+            file.try_lock_read_async().await.unwrap()
+        }))
+        .await;
+        join_all(guards.into_iter().map(|mut guard| async move {
+            let mut buffer = Vec::new();
+            guard.read_to_end(&mut buffer).await.unwrap();
+            assert_eq!(&buffer, BYTES);
+        }))
+        .await;
+    }
+}
 
 #[cfg(windows)]
 mod windows {
     use super::*;
+    use fd_lock::blocking::{LockRead, LockWrite};
     use std::os::windows::fs::OpenOptionsExt;
 
     #[test]
@@ -122,21 +140,19 @@ mod windows {
         let path = dir.path().join("lockfile");
 
         // On Windows, opening with an access_mode as 0 will prevent all locking operations from succeeding, simulating an I/O error.
-        let mut l0 = blocking::RwLock::new(
-            File::options()
-                .create(true)
-                .read(true)
-                .write(true)
-                .truncate(true)
-                .access_mode(0)
-                .open(path)
-                .unwrap(),
-        );
+        let l0 = std::fs::File::options()
+            .create(true)
+            .read(true)
+            .write(true)
+            .truncate(true)
+            .access_mode(0)
+            .open(path)
+            .unwrap();
 
-        let err1 = l0.try_read().unwrap_err();
+        let (l0, err1) = l0.try_lock_read().unwrap_err();
         assert!(matches!(err1.kind(), ErrorKind::PermissionDenied));
 
-        let err2 = l0.try_write().unwrap_err();
+        let (_l0, err2) = l0.try_lock_write().unwrap_err();
         assert!(matches!(err2.kind(), ErrorKind::PermissionDenied));
     }
 }

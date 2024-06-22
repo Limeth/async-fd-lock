@@ -18,6 +18,7 @@ async = ["dep:tokio"]
 [dependencies]
 cfg-if = "1.0.0"
 tokio = { version = "1.38.0", features = ["rt", "sync"], optional = true }
+async-trait = "0.1.80"
 
 [target.'cfg(windows)'.dependencies.windows-sys]
 version = "0.52.0"
@@ -32,7 +33,7 @@ rustix = { version = "0.38.0", features = ["fs"] }
 
 [dev-dependencies]
 paste = "1.0.15"
-polonius-the-crab = "0.4.1"
 tempfile = "3.0.8"
-async-trait = "0.1.80"
-tokio = { version = "1.38.0", features = ["macros", "time"] }
+tokio = { version = "1.38.0", features = ["macros", "time", "fs", "io-util"] }
+tokio-test = "0.4.4"
+futures = "0.3.30"

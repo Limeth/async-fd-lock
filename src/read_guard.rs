@@ -1,41 +1,43 @@
-use std::ops;
+use std::ops::{Deref, DerefMut};
 
-use crate::sys::{self, RwLockTraitExt};
+use crate::sys::{AsOpenFile, AsOpenFileExt};
 
-/// RAII structure used to release the shared read access of a lock when
-/// dropped.
+/// Onwed version of `RwLockReadGuard`
 ///
-/// This structure is created by the [`read`] and [`try_read`] methods on
-/// [`RwLock`].
+/// # Panics
 ///
-/// [`read`]: crate::RwLock::read
-/// [`try_read`]: crate::RwLock::try_read
-/// [`RwLock`]: crate::RwLock
+/// Dropping this type may panic if the lock fails to unlock.
 #[must_use = "if unused the RwLock will immediately unlock"]
 #[derive(Debug)]
-pub struct RwLockReadGuard<'lock, T: sys::AsOpenFile> {
-    lock: &'lock sys::RwLock<T>,
+pub struct RwLockReadGuard<T: AsOpenFile> {
+    file: T,
 }
 
-impl<'lock, T: sys::AsOpenFile> RwLockReadGuard<'lock, T> {
-    pub(crate) fn new(lock: &'lock sys::RwLock<T>) -> Self {
-        Self { lock }
+impl<T: AsOpenFile> RwLockReadGuard<T> {
+    pub(crate) fn new(file: T) -> Self {
+        Self { file }
     }
 }
 
-impl<T: sys::AsOpenFile> ops::Deref for RwLockReadGuard<'_, T> {
+impl<T: AsOpenFile> Deref for RwLockReadGuard<T> {
     type Target = T;
 
     #[inline]
     fn deref(&self) -> &Self::Target {
-        &self.lock.inner
+        &self.file
+    }
+}
+
+impl<T: AsOpenFile> DerefMut for RwLockReadGuard<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.file
     }
 }
 
 /// Release the lock.
-impl<T: sys::AsOpenFile> Drop for RwLockReadGuard<'_, T> {
+impl<T: AsOpenFile> Drop for RwLockReadGuard<T> {
     #[inline]
     fn drop(&mut self) {
-        let _ = self.lock.release_lock();
+        let _ = self.file.release_lock_blocking();
     }
 }
