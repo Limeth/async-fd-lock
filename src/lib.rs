@@ -27,15 +27,14 @@
 //!         .write(true)
 //!         .truncate(true)
 //!         .open(&path).await?
-//!         .lock_write().await
-//!         .map_err(|(_, err)| err)?;
+//!         .lock_write().await?;
 //!     write_guard.write(b"bongo cat").await?;
 //! }
 //!
 //! // Lock it for reading.
 //! {
-//!     let mut read_guard_1 = File::open(&path).await?.lock_read().await.map_err(|(_, err)| err)?;
-//!     let mut read_guard_2 = File::open(&path).await?.lock_read().await.map_err(|(_, err)| err)?;
+//!     let mut read_guard_1 = File::open(&path).await?.lock_read().await?;
+//!     let mut read_guard_2 = File::open(&path).await?.lock_read().await?;
 //!     let byte_1 = read_guard_1.read_u8().await?;
 //!     let byte_2 = read_guard_2.read_u8().await?;
 //! }
@@ -46,24 +45,20 @@
 #![deny(missing_debug_implementations, nonstandard_style)]
 #![cfg_attr(doc, warn(missing_docs, rustdoc::missing_doc_code_examples))]
 
-use std::io;
 use sys::AsOpenFileExt;
 
 mod read_guard;
 mod write_guard;
 
+pub(crate) mod error;
 pub(crate) mod sys;
 
+pub use error::*;
 #[cfg(feature = "async")]
 pub use nonblocking::*;
 pub use read_guard::RwLockReadGuard;
 pub use sys::AsOpenFile;
 pub use write_guard::RwLockWriteGuard;
-
-// TODO: Error type should have an Into<.1> impl to improve ergonomics with the try operator.
-pub type LockReadResult<T> = Result<RwLockReadGuard<T>, (T, io::Error)>;
-// TODO: Error type should have an Into<.1> impl to improve ergonomics with the try operator.
-pub type LockWriteResult<T> = Result<RwLockWriteGuard<T>, (T, io::Error)>;
 
 pub mod blocking {
     use super::*;
@@ -95,14 +90,14 @@ pub mod blocking {
         fn lock_read(self) -> LockReadResult<Self> {
             match self.acquire_lock_blocking::<false, true>() {
                 Ok(guard) => Ok(RwLockReadGuard::new(self, guard)),
-                Err(error) => Err((self, error)),
+                Err(error) => Err(LockError::new(self, error)),
             }
         }
 
         fn try_lock_read(self) -> LockReadResult<Self> {
             match self.acquire_lock_blocking::<false, false>() {
                 Ok(guard) => Ok(RwLockReadGuard::new(self, guard)),
-                Err(error) => Err((self, error)),
+                Err(error) => Err(LockError::new(self, error)),
             }
         }
     }
@@ -114,14 +109,14 @@ pub mod blocking {
         fn lock_write(self) -> LockWriteResult<Self> {
             match self.acquire_lock_blocking::<true, true>() {
                 Ok(guard) => Ok(RwLockWriteGuard::new(self, guard)),
-                Err(error) => Err((self, error)),
+                Err(error) => Err(LockError::new(self, error)),
             }
         }
 
         fn try_lock_write(self) -> LockWriteResult<Self> {
             match self.acquire_lock_blocking::<true, false>() {
                 Ok(guard) => Ok(RwLockWriteGuard::new(self, guard)),
-                Err(error) => Err((self, error)),
+                Err(error) => Err(LockError::new(self, error)),
             }
         }
     }
@@ -131,6 +126,7 @@ pub mod blocking {
 pub mod nonblocking {
     use super::*;
     use async_trait::async_trait;
+    use std::io;
     use sys::{AsOpenFileExt, RwLockGuard};
 
     async fn lock<const WRITE: bool, const BLOCK: bool, T>(
@@ -181,14 +177,14 @@ pub mod nonblocking {
         async fn lock_read(self) -> LockReadResult<Self> {
             match lock::<false, true, _>(&self).await {
                 Ok(guard) => Ok(RwLockReadGuard::new(self, guard)),
-                Err(error) => Err((self, error)),
+                Err(error) => Err(LockError::new(self, error)),
             }
         }
 
         async fn try_lock_read(self) -> LockReadResult<Self> {
             match lock::<false, false, _>(&self).await {
                 Ok(guard) => Ok(RwLockReadGuard::new(self, guard)),
-                Err(error) => Err((self, error)),
+                Err(error) => Err(LockError::new(self, error)),
             }
         }
     }
@@ -201,14 +197,14 @@ pub mod nonblocking {
         async fn lock_write(self) -> LockWriteResult<Self> {
             match lock::<true, true, _>(&self).await {
                 Ok(guard) => Ok(RwLockWriteGuard::new(self, guard)),
-                Err(error) => Err((self, error)),
+                Err(error) => Err(LockError::new(self, error)),
             }
         }
 
         async fn try_lock_write(self) -> LockWriteResult<Self> {
             match lock::<true, false, _>(&self).await {
                 Ok(guard) => Ok(RwLockWriteGuard::new(self, guard)),
-                Err(error) => return Err((self, error)),
+                Err(error) => return Err(LockError::new(self, error)),
             }
         }
     }

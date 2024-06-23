@@ -1,6 +1,7 @@
-use async_fd_lock::{AsOpenFile, LockRead, LockWrite, RwLockReadGuard, RwLockWriteGuard};
+use async_fd_lock::{
+    AsOpenFile, LockError, LockRead, LockReadResult, LockWrite, LockWriteResult,
+};
 use async_trait::async_trait;
-use std::io;
 use std::io::ErrorKind;
 use std::path::Path;
 use std::time::Duration;
@@ -32,21 +33,21 @@ pub async fn file_open(path: impl AsRef<Path>) -> std::io::Result<File> {
 
 #[async_trait]
 pub trait LockReadExt: AsOpenFile {
-    async fn try_lock_read_async(self) -> Result<RwLockReadGuard<Self>, (Self, io::Error)>
+    async fn try_lock_read_async(self) -> LockReadResult<Self>
     where
         Self: Sized + Send + Sync + 'static;
 }
 
 #[async_trait]
 pub trait LockWriteExt: AsOpenFile {
-    async fn try_lock_write_async(self) -> Result<RwLockWriteGuard<Self>, (Self, io::Error)>
+    async fn try_lock_write_async(self) -> LockWriteResult<Self>
     where
         Self: Sized + Send + Sync + 'static;
 }
 
 #[async_trait]
 impl LockReadExt for std::fs::File {
-    async fn try_lock_read_async(self) -> Result<RwLockReadGuard<Self>, (Self, io::Error)>
+    async fn try_lock_read_async(self) -> LockReadResult<Self>
     where
         Self: Sized + Send + Sync + 'static,
     {
@@ -56,7 +57,7 @@ impl LockReadExt for std::fs::File {
 
 #[async_trait]
 impl LockWriteExt for std::fs::File {
-    async fn try_lock_write_async(self) -> Result<RwLockWriteGuard<Self>, (Self, io::Error)>
+    async fn try_lock_write_async(self) -> LockWriteResult<Self>
     where
         Self: Sized + Send + Sync + 'static,
     {
@@ -66,7 +67,7 @@ impl LockWriteExt for std::fs::File {
 
 #[async_trait]
 impl LockReadExt for tokio::fs::File {
-    async fn try_lock_read_async(self) -> Result<RwLockReadGuard<Self>, (Self, io::Error)>
+    async fn try_lock_read_async(self) -> LockReadResult<Self>
     where
         Self: Sized + Send + Sync + 'static,
     {
@@ -76,7 +77,7 @@ impl LockReadExt for tokio::fs::File {
 
 #[async_trait]
 impl LockWriteExt for tokio::fs::File {
-    async fn try_lock_write_async(self) -> Result<RwLockWriteGuard<Self>, (Self, io::Error)>
+    async fn try_lock_write_async(self) -> LockWriteResult<Self>
     where
         Self: Sized + Send + Sync + 'static,
     {
@@ -113,10 +114,10 @@ impl AsyncTryClone for tokio::fs::File {
 
 #[async_trait]
 pub trait AsOpenFileExt: AsOpenFile {
-    async fn timeout_lock_read_async(self) -> Result<RwLockReadGuard<Self>, (Self, io::Error)>
+    async fn timeout_lock_read_async(self) -> LockReadResult<Self>
     where
         Self: Sized + Send + Sync + 'static;
-    async fn timeout_lock_write_async(self) -> Result<RwLockWriteGuard<Self>, (Self, io::Error)>
+    async fn timeout_lock_write_async(self) -> LockWriteResult<Self>
     where
         Self: Sized + Send + Sync + 'static;
 }
@@ -128,31 +129,31 @@ impl<T> AsOpenFileExt for T
 where
     T: AsOpenFile + LockRead + LockWrite + AsyncTryClone,
 {
-    async fn timeout_lock_read_async(self) -> Result<RwLockReadGuard<T>, (Self, io::Error)>
+    async fn timeout_lock_read_async(self) -> LockReadResult<Self>
     where
         T: Sized + Send + Sync + 'static,
     {
         let clone = match self.async_try_clone().await {
             Ok(clone) => clone,
-            Err(error) => return Err((self, error)),
+            Err(error) => return Err(LockError::new(self, error)),
         };
         time::timeout(TIMEOUT, self.lock_read())
             .await
-            .map_err(move |_: Elapsed| (clone, ErrorKind::WouldBlock.into()))
+            .map_err(move |_: Elapsed| LockError::new(clone, ErrorKind::WouldBlock.into()))
             .and_then(std::convert::identity)
     }
 
-    async fn timeout_lock_write_async(self) -> Result<RwLockWriteGuard<T>, (Self, io::Error)>
+    async fn timeout_lock_write_async(self) -> LockWriteResult<Self>
     where
         T: Sized + Send + Sync + 'static,
     {
         let clone = match self.async_try_clone().await {
             Ok(clone) => clone,
-            Err(error) => return Err((self, error)),
+            Err(error) => return Err(LockError::new(self, error)),
         };
         time::timeout(TIMEOUT, self.lock_write())
             .await
-            .map_err(move |_: Elapsed| (clone, ErrorKind::WouldBlock.into()))
+            .map_err(move |_: Elapsed| LockError::new(clone, ErrorKind::WouldBlock.into()))
             .and_then(std::convert::identity)
     }
 }

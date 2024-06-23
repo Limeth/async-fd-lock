@@ -34,7 +34,7 @@ macro_rules! generate_tests {
                 let mut l1 = $($blocking_second::)? file_open(path).await.unwrap();
 
                 let g0 = l0.[<$prefix_first _lock_write_async>]().await.unwrap();
-                let (l1, err) = l1.[<$prefix_second _lock_write_async>]().await.unwrap_err();
+                let (l1, err) = l1.[<$prefix_second _lock_write_async>]().await.unwrap_err().into();
 
                 assert!(matches!(err.kind(), ErrorKind::WouldBlock));
                 drop(g0);
@@ -52,7 +52,7 @@ macro_rules! generate_tests {
                 let mut l1 = $($blocking_second::)? file_open(path).await.unwrap();
 
                 let g0 = l0.[<$prefix_first _lock_read_async>]().await.unwrap();
-                let (l1, err) = l1.[<$prefix_second _lock_write_async>]().await.unwrap_err();
+                let (l1, err) = l1.[<$prefix_second _lock_write_async>]().await.unwrap_err().into();
 
                 assert!(matches!(err.kind(), ErrorKind::WouldBlock));
                 drop(g0);
@@ -70,7 +70,7 @@ macro_rules! generate_tests {
                 let l1 = $($blocking_second::)? file_open(path).await.unwrap();
 
                 let g0 = l0.[<$prefix_first _lock_write_async>]().await.unwrap();
-                let (l1, err) = l1.[<$prefix_second _lock_read_async>]().await.unwrap_err();
+                let (l1, err) = l1.[<$prefix_second _lock_read_async>]().await.unwrap_err().into();
 
                 assert!(matches!(err.kind(), ErrorKind::WouldBlock));
                 drop(g0);
@@ -149,10 +149,10 @@ mod windows {
             .open(path)
             .unwrap();
 
-        let (l0, err1) = l0.try_lock_read().unwrap_err();
+        let (l0, err1) = l0.try_lock_read().unwrap_err().into();
         assert!(matches!(err1.kind(), ErrorKind::PermissionDenied));
 
-        let (_l0, err2) = l0.try_lock_write().unwrap_err();
+        let (_l0, err2) = l0.try_lock_write().unwrap_err().into();
         assert!(matches!(err2.kind(), ErrorKind::PermissionDenied));
     }
 }

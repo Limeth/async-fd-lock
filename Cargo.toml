@@ -21,6 +21,7 @@ async-trait = "0.1.80"
 cfg-if = "1.0.0"
 pin-project = "1.1.5"
 tokio = { version = "1.38.0", features = ["rt", "sync"], optional = true }
+thiserror = "1.0.61"
 
 [target.'cfg(windows)'.dependencies.windows-sys]
 version = "0.52.0"
