@@ -1,5 +1,5 @@
 use std::{
-    io::{self, Read, Write},
+    io::{self, BufRead, Read, Seek, Write},
     pin::Pin,
 };
 
@@ -8,6 +8,8 @@ use pin_project::{pin_project, pinned_drop};
 
 use crate::sys::{AsOpenFile, AsOpenFileExt, RwLockGuard};
 
+/// An exclusive lock on a file.
+///
 /// # Panics
 ///
 /// Dropping this type may panic if the lock fails to unlock.
@@ -82,6 +84,24 @@ impl<T: AsOpenFile + Read> Read for RwLockWriteGuard<T> {
     }
 }
 
+impl<T: AsOpenFile + BufRead> BufRead for RwLockWriteGuard<T> {
+    fn fill_buf(&mut self) -> io::Result<&[u8]> {
+        self.inner_mut().fill_buf()
+    }
+
+    fn consume(&mut self, amt: usize) {
+        self.inner_mut().consume(amt)
+    }
+
+    fn read_until(&mut self, byte: u8, buf: &mut Vec<u8>) -> io::Result<usize> {
+        self.inner_mut().read_until(byte, buf)
+    }
+
+    fn read_line(&mut self, buf: &mut String) -> io::Result<usize> {
+        self.inner_mut().read_line(buf)
+    }
+}
+
 /// Delegate [`Write`] to the inner file.
 impl<T: AsOpenFile + Write> Write for RwLockWriteGuard<T> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
@@ -112,10 +132,28 @@ impl<T: AsOpenFile + Write> Write for RwLockWriteGuard<T> {
     }
 }
 
+impl<T: AsOpenFile + Seek> Seek for RwLockWriteGuard<T> {
+    fn seek(&mut self, pos: io::SeekFrom) -> io::Result<u64> {
+        self.inner_mut().seek(pos)
+    }
+
+    fn rewind(&mut self) -> io::Result<()> {
+        self.inner_mut().rewind()
+    }
+
+    fn stream_position(&mut self) -> io::Result<u64> {
+        self.inner_mut().stream_position()
+    }
+
+    fn seek_relative(&mut self, offset: i64) -> io::Result<()> {
+        self.inner_mut().seek_relative(offset)
+    }
+}
+
 cfg_if! {
     if #[cfg(feature = "async")] {
-        use tokio::io::AsyncRead;
-        use tokio::io::AsyncWrite;
+        use std::task::{Context, Poll};
+        use tokio::io::{AsyncRead, AsyncBufRead, AsyncWrite, AsyncSeek};
 
         /// Delegate [`AsyncRead`] to the inner file.
         impl<T: AsOpenFile + AsyncRead> AsyncRead for RwLockWriteGuard<T> {
@@ -125,6 +163,16 @@ cfg_if! {
                 buf: &mut tokio::io::ReadBuf<'_>,
             ) -> std::task::Poll<io::Result<()>> {
                 self.inner_pin_mut().poll_read(cx, buf)
+            }
+        }
+
+        impl<T: AsOpenFile + AsyncBufRead> AsyncBufRead for RwLockWriteGuard<T> {
+            fn poll_fill_buf(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<&[u8]>> {
+                self.inner_pin_mut().poll_fill_buf(cx)
+            }
+
+            fn consume(self: Pin<&mut Self>, amt: usize) {
+                self.inner_pin_mut().consume(amt)
             }
         }
 
@@ -162,6 +210,16 @@ cfg_if! {
                 cx: &mut std::task::Context<'_>,
             ) -> std::task::Poll<Result<(), io::Error>> {
                 self.inner_pin_mut().poll_shutdown(cx)
+            }
+        }
+
+        impl<T: AsOpenFile + AsyncSeek> AsyncSeek for RwLockWriteGuard<T> {
+            fn start_seek(self: Pin<&mut Self>, position: io::SeekFrom) -> io::Result<()> {
+                self.inner_pin_mut().start_seek(position)
+            }
+
+            fn poll_complete(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<u64>> {
+                self.inner_pin_mut().poll_complete(cx)
             }
         }
     }

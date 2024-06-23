@@ -60,7 +60,9 @@ pub use read_guard::RwLockReadGuard;
 pub use sys::AsOpenFile;
 pub use write_guard::RwLockWriteGuard;
 
+// TODO: Error type should have an Into<.1> impl to improve ergonomics with the try operator.
 pub type LockReadResult<T> = Result<RwLockReadGuard<T>, (T, io::Error)>;
+// TODO: Error type should have an Into<.1> impl to improve ergonomics with the try operator.
 pub type LockWriteResult<T> = Result<RwLockWriteGuard<T>, (T, io::Error)>;
 
 pub mod blocking {
