@@ -10,6 +10,7 @@ categories = ["filesystem", "os", "os::macos-apis", "os::unix-apis", "os::window
 authors = ["Jakub Hlusička", "Yoshua Wuyts <yoshuawuyts@gmail.com>"]
 readme = "README.md"
 edition = "2021"
+exclude = [".github", ".vscode"]
 
 [features]
 default = ["async"]
