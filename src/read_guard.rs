@@ -46,6 +46,7 @@ impl<T: AsOpenFile> RwLockReadGuard<T> {
             .expect("file only removed during release")
     }
 
+    /// Releases the lock, returning the inner file.
     pub fn release(mut self) -> io::Result<T> {
         let file = self.file.take().expect("file only removed during release");
         file.release_lock_blocking()?;

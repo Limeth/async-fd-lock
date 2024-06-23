@@ -10,27 +10,35 @@
 //!
 //! # Example
 //!
-//! ```ignore
+//! ```
+//! use std::path::PathBuf;
 //! use tokio::fs::File;
 //! use tokio::io::{AsyncReadExt, AsyncWriteExt};
-//! use fd_lock::RwLock;
+//! use async_fd_lock::{LockRead, LockWrite};
 //!
 //! # tokio_test::block_on(async {
 //! // Create an async advisory file lock.
-//! let mut f = RwLock::new(File::open("foo.txt").await?);
-//!
-//! // Lock it for reading.
-//! {
-//!     let mut read_guard_1 = f.read().await?;
-//!     let mut read_guard_2 = f.read().await?;
-//!     let byte_1 = (&*read_guard_1).read_u8().await?;
-//!     let byte_2 = read_guard_2.read_u8().await?;
-//! }
+//! let dir = tempfile::tempdir().unwrap();
+//! let path = dir.path().join("foo.txt");
 //!
 //! // Lock it for writing.
 //! {
-//!     let mut write_guard = f.write().await?;
-//!     write_guard.write(b"chashu cat").await?;
+//!     let mut write_guard = File::options()
+//!         .create_new(true)
+//!         .write(true)
+//!         .truncate(true)
+//!         .open(&path).await?
+//!         .lock_write().await
+//!         .map_err(|(_, err)| err)?;
+//!     write_guard.write(b"bongo cat").await?;
+//! }
+//!
+//! // Lock it for reading.
+//! {
+//!     let mut read_guard_1 = File::open(&path).await?.lock_read().await.map_err(|(_, err)| err)?;
+//!     let mut read_guard_2 = File::open(&path).await?.lock_read().await.map_err(|(_, err)| err)?;
+//!     let byte_1 = read_guard_1.read_u8().await?;
+//!     let byte_2 = read_guard_2.read_u8().await?;
 //! }
 //! # std::io::Result::Ok(())
 //! # }).unwrap();
