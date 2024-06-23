@@ -35,15 +35,14 @@ let path = dir.path().join("foo.txt");
         .write(true)
         .truncate(true)
         .open(&path).await?
-        .lock_write().await
-        .map_err(|(_, err)| err)?;
+        .lock_write().await?;
     write_guard.write(b"bongo cat").await?;
 }
 
 // Lock it for reading.
 {
-    let mut read_guard_1 = File::open(&path).await?.lock_read().await.map_err(|(_, err)| err)?;
-    let mut read_guard_2 = File::open(&path).await?.lock_read().await.map_err(|(_, err)| err)?;
+    let mut read_guard_1 = File::open(&path).await?.lock_read().await?;
+    let mut read_guard_2 = File::open(&path).await?.lock_read().await?;
     let byte_1 = read_guard_1.read_u8().await?;
     let byte_2 = read_guard_2.read_u8().await?;
 }
