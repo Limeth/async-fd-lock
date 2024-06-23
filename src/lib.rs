@@ -43,7 +43,7 @@
 //! ```
 #![forbid(future_incompatible)]
 #![deny(missing_debug_implementations, nonstandard_style)]
-#![cfg_attr(doc, warn(missing_docs, rustdoc::missing_doc_code_examples))]
+#![cfg_attr(doc, warn(missing_docs))]
 
 use sys::AsOpenFileExt;
 
