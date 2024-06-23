@@ -8,8 +8,6 @@ use pin_project::{pin_project, pinned_drop};
 
 use crate::sys::{AsOpenFile, AsOpenFileExt, RwLockGuard};
 
-/// Onwed version of `RwLockReadGuard`
-///
 /// # Panics
 ///
 /// Dropping this type may panic if the lock fails to unlock.
