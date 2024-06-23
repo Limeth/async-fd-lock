@@ -20,35 +20,43 @@ but solely to coordinate file access.
 ## Examples
 __Basic usage__
 ```rust
-use std::io::prelude::*;
-use std::fs::File;
-use fd_lock::RwLock;
+use std::path::PathBuf;
+use tokio::fs::File;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use async_fd_lock::{LockRead, LockWrite};
 
-// Lock a file and write to it.
-let mut f = RwLock::new(File::open("foo.txt")?);
-write!(f.write()?, "chashu cat")?;
+let dir = tempfile::tempdir().unwrap();
+let path = dir.path().join("foo.txt");
 
-// A lock can also be held across multiple operations.
-let mut f = f.write()?;
-write!(f, "nori cat")?;
-write!(f, "bird!")?;
+// Lock it for writing.
+{
+    let mut write_guard = File::options()
+        .create_new(true)
+        .write(true)
+        .truncate(true)
+        .open(&path).await?
+        .lock_write().await
+        .map_err(|(_, err)| err)?;
+    write_guard.write(b"bongo cat").await?;
+}
+
+// Lock it for reading.
+{
+    let mut read_guard_1 = File::open(&path).await?.lock_read().await.map_err(|(_, err)| err)?;
+    let mut read_guard_2 = File::open(&path).await?.lock_read().await.map_err(|(_, err)| err)?;
+    let byte_1 = read_guard_1.read_u8().await?;
+    let byte_2 = read_guard_2.read_u8().await?;
+}
 ```
 
 ## Installation
 ```sh
-$ cargo add fd-lock
+$ cargo add async-fd-lock
 ```
 
 ## Safety
 This crate uses `unsafe` on Windows to interface with `windows-sys`. All
 invariants have been carefully checked, and are manually enforced.
-
-## Contributing
-Want to join us? Check out our ["Contributing" guide][contributing] and take a
-look at some of these issues:
-
-- [Issues labeled "good first issue"][good-first-issue]
-- [Issues labeled "help wanted"][help-wanted]
 
 ## References
 - [LockFile function - WDC](https://docs.microsoft.com/en-us/windows/desktop/api/fileapi/nf-fileapi-lockfile)
@@ -59,16 +67,13 @@ look at some of these issues:
 ## License
 [MIT](./LICENSE-MIT) OR [Apache-2.0](./LICENSE-APACHE)
 
-[1]: https://img.shields.io/crates/v/fd-lock.svg?style=flat-square
-[2]: https://crates.io/crates/fd-lock
-[3]: https://img.shields.io/travis/yoshuawuyts/fd-lock/master.svg?style=flat-square
-[4]: https://travis-ci.org/yoshuawuyts/fd-lock
-[5]: https://img.shields.io/crates/d/fd-lock.svg?style=flat-square
-[6]: https://crates.io/crates/fd-lock
+[1]: https://img.shields.io/crates/v/async-fd-lock.svg?style=flat-square
+[2]: https://crates.io/crates/async-fd-lock
+[3]: https://img.shields.io/travis/Limeth/async-fd-lock/master.svg?style=flat-square
+[4]: https://travis-ci.org/Limeth/async-fd-lock
+[5]: https://img.shields.io/crates/d/async-fd-lock.svg?style=flat-square
+[6]: https://crates.io/crates/async-fd-lock
 [7]: https://img.shields.io/badge/docs-latest-blue.svg?style=flat-square
-[8]: https://docs.rs/fd-lock
+[8]: https://docs.rs/async-fd-lock
 
-[releases]: https://github.com/yoshuawuyts/fd-lock/releases
-[contributing]: https://github.com/yoshuawuyts/fd-lock/blob/master.github/CONTRIBUTING.md
-[good-first-issue]: https://github.com/yoshuawuyts/fd-lock/labels/good%20first%20issue
-[help-wanted]: https://github.com/yoshuawuyts/fd-lock/labels/help%20wanted
+[releases]: https://github.com/Limeth/async-fd-lock/releases

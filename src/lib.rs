@@ -17,7 +17,6 @@
 //! use async_fd_lock::{LockRead, LockWrite};
 //!
 //! # tokio_test::block_on(async {
-//! // Create an async advisory file lock.
 //! let dir = tempfile::tempdir().unwrap();
 //! let path = dir.path().join("foo.txt");
 //!
