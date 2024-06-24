@@ -22,12 +22,7 @@
 //!
 //! // Lock it for writing.
 //! {
-//!     let mut write_guard = File::options()
-//!         .create_new(true)
-//!         .write(true)
-//!         .truncate(true)
-//!         .open(&path).await?
-//!         .lock_write().await?;
+//!     let mut write_guard = File::create_new(&path).await?.lock_write().await?;
 //!     write_guard.write(b"bongo cat").await?;
 //! }
 //!
